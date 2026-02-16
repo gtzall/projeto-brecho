@@ -9,19 +9,101 @@ export interface PixConfig {
   value?: number;
 }
 
-export function generatePixPayload(config: PixConfig): string {
+export interface PixKeyInfo {
+  type: "cpf" | "cnpj" | "email" | "phone" | "random";
+  typeLabel: string;
+  value: string;
+  originalKey: string;
+}
+
+export function detectPixKeyType(key: string): PixKeyInfo {
+  const cleanKey = key.trim();
+  const numbersOnly = cleanKey.replace(/\D/g, "");
+  
+  // Email
+  if (cleanKey.includes("@")) {
+    return {
+      type: "email",
+      typeLabel: "E-mail",
+      value: cleanKey.toLowerCase(),
+      originalKey: cleanKey,
+    };
+  }
+  
+  // CPF (11 dígitos)
+  if (numbersOnly.length === 11) {
+    return {
+      type: "cpf",
+      typeLabel: "CPF",
+      value: numbersOnly,
+      originalKey: cleanKey,
+    };
+  }
+  
+  // CNPJ (14 dígitos)
+  if (numbersOnly.length === 14) {
+    return {
+      type: "cnpj",
+      typeLabel: "CNPJ",
+      value: numbersOnly,
+      originalKey: cleanKey,
+    };
+  }
+  
+  // Telefone (10-13 dígitos, com ou sem +55)
+  if (numbersOnly.length >= 10 && numbersOnly.length <= 14) {
+    let phoneValue = numbersOnly;
+    // Adicionar 55 se não tiver
+    if (!phoneValue.startsWith("55") && phoneValue.length <= 11) {
+      phoneValue = "55" + phoneValue;
+    }
+    return {
+      type: "phone",
+      typeLabel: "Telefone",
+      value: phoneValue,
+      originalKey: cleanKey,
+    };
+  }
+  
+  // Chave aleatória (EVP) - geralmente 36 caracteres com hífens
+  return {
+    type: "random",
+    typeLabel: "Chave Aleatória",
+    value: cleanKey,
+    originalKey: cleanKey,
+  };
+}
+
+export function generatePixPayload(config: PixConfig): { payload: string; keyInfo: PixKeyInfo } {
   const { key, name, city, transactionId = "***", value } = config;
+  
+  // Detectar tipo de chave
+  const keyInfo = detectPixKeyType(key);
+  
+  console.log("PIX - Tipo de chave detectado:", keyInfo);
   
   // Limpar e formatar dados
   const cleanName = name.substring(0, 25).toUpperCase();
   const cleanCity = city.substring(0, 15).toUpperCase();
   const txid = transactionId.substring(0, 25);
   
+  // Mapear tipo de chave para código do BR Code
+  const typeMap: Record<string, string> = {
+    email: "01",
+    cpf: "02", 
+    cnpj: "03",
+    phone: "04",
+    random: "05",
+  };
+  
+  const keyType = typeMap[keyInfo.type];
+  const keyValue = keyInfo.value;
+  
   // ID do payload
   let payload = "000201";
   
   // Merchant Account Information - PIX
-  const merchantAccount = buildMerchantAccount(key);
+  const merchantAccount = buildMerchantAccount(keyType, keyValue);
   payload += merchantAccount;
   
   // Merchant Category Code (0000 = não especificado)
@@ -46,42 +128,19 @@ export function generatePixPayload(config: PixConfig): string {
   payload += `60${String(cleanCity.length).padStart(2, "0")}${cleanCity}`;
   
   // Additional Data Field Template (TXID)
-  const additionalData = `0503${txid}`;
+  const additionalData = `05${String(txid.length).padStart(2, "0")}${txid}`;
   payload += `62${String(additionalData.length).padStart(2, "0")}${additionalData}`;
   
   // CRC16
   payload += "6304";
   payload += calculateCRC16(payload);
   
-  return payload;
+  return { payload, keyInfo };
 }
 
-function buildMerchantAccount(key: string): string {
+function buildMerchantAccount(keyType: string, keyValue: string): string {
   // GUI do PIX no Brasil
   const gui = "br.gov.bcb.pix";
-  
-  // Identificador da chave PIX
-  let keyType: string;
-  let keyValue = key;
-  
-  // Detectar tipo de chave
-  if (key.includes("@")) {
-    keyType = "01"; // Email
-  } else if (/^\d{11}$/.test(key.replace(/\D/g, ""))) {
-    keyType = "02"; // CPF
-    keyValue = key.replace(/\D/g, "");
-  } else if (/^\d{14}$/.test(key.replace(/\D/g, ""))) {
-    keyType = "03"; // CNPJ
-    keyValue = key.replace(/\D/g, "");
-  } else if (/^\+?\d{10,14}$/.test(key.replace(/\s/g, ""))) {
-    keyType = "04"; // Telefone
-    keyValue = key.replace(/\D/g, "");
-    if (!keyValue.startsWith("55")) {
-      keyValue = "55" + keyValue;
-    }
-  } else {
-    keyType = "05"; // Chave aleatória (EVP)
-  }
   
   // Construir Merchant Account Information
   // ID 26 = PIX no BR Code

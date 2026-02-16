@@ -2,12 +2,12 @@ import { useState, useEffect } from "react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useCart } from "@/hooks/useCart";
-import { Trash2, ShoppingBag, Copy, Check, AlertCircle } from "lucide-react";
+import { Trash2, ShoppingBag, Copy, Check, AlertCircle, CreditCard } from "lucide-react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
-import { generatePixPayload } from "@/utils/pix";
+import { generatePixPayload, PixKeyInfo } from "@/utils/pix";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -20,21 +20,16 @@ const Cart = () => {
   const { items, removeItem, totalPrice, clearCart } = useCart();
   const [showCheckout, setShowCheckout] = useState(false);
   const [pixPayload, setPixPayload] = useState("");
+  const [pixKeyInfo, setPixKeyInfo] = useState<PixKeyInfo | null>(null);
   const [copied, setCopied] = useState(false);
   const [pixError, setPixError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [debugInfo, setDebugInfo] = useState<string>("");
 
   const { data: settings, isLoading: settingsLoading } = useQuery({
     queryKey: ["settings-pix"],
     queryFn: async () => {
-      console.log("Buscando settings do Supabase...");
       const { data, error } = await supabase.from("settings").select("key, value");
-      if (error) {
-        console.error("Erro ao buscar settings:", error);
-        throw error;
-      }
-      console.log("Settings recebidas:", data);
+      if (error) throw error;
       const map: Record<string, string> = {};
       (data || []).forEach((r: { key: string; value: string }) => { map[r.key] = r.value; });
       return map;
@@ -45,15 +40,9 @@ const Cart = () => {
   useEffect(() => {
     if (!showCheckout) return;
     
-    console.log("Effect executado:", { showCheckout, settings, totalPrice });
-    
-    if (!settings) {
-      setDebugInfo("Carregando configurações...");
-      return;
-    }
+    if (!settings) return;
     
     if (!settings.pix_key) {
-      setDebugInfo("Chave PIX não encontrada nas configurações. Settings: " + JSON.stringify(settings));
       setPixError("Chave PIX não configurada no admin");
       return;
     }
@@ -72,8 +61,6 @@ const Cart = () => {
         const name = (settings.pix_name || "Garimpário").trim();
         const city = (settings.pix_city || "SAO PAULO").trim();
         
-        setDebugInfo(`Gerando PIX com chave: ${key.substring(0, 10)}...`);
-        
         if (!key) {
           setPixError("Chave PIX vazia");
           setIsGenerating(false);
@@ -81,7 +68,7 @@ const Cart = () => {
         }
 
         // Gerar payload PIX
-        const payload = generatePixPayload({
+        const result = generatePixPayload({
           key,
           name,
           city,
@@ -89,14 +76,13 @@ const Cart = () => {
           value: totalPrice,
         });
         
-        console.log("Payload gerado:", payload);
-        setPixPayload(payload);
-        setDebugInfo(`Chave usada: ${key.substring(0, 15)}...`);
+        setPixPayload(result.payload);
+        setPixKeyInfo(result.keyInfo);
       } catch (err: any) {
         console.error("Erro ao gerar PIX:", err);
         setPixError(err?.message || "Erro ao gerar código PIX");
         setPixPayload("");
-        setDebugInfo(`Erro: ${err?.message}`);
+        setPixKeyInfo(null);
       } finally {
         setIsGenerating(false);
       }
@@ -116,8 +102,28 @@ const Cart = () => {
   const handleCloseCheckout = () => {
     setShowCheckout(false);
     setPixPayload("");
+    setPixKeyInfo(null);
     setPixError(null);
-    setDebugInfo("");
+  };
+
+  // Função para formatar a chave PIX para exibição
+  const formatKeyForDisplay = (key: string, type: string) => {
+    if (type === "cpf" && key.length === 11) {
+      return `${key.slice(0, 3)}.${key.slice(3, 6)}.${key.slice(6, 9)}-${key.slice(9)}`;
+    }
+    if (type === "cnpj" && key.length === 14) {
+      return `${key.slice(0, 2)}.${key.slice(2, 5)}.${key.slice(5, 8)}/${key.slice(8, 12)}-${key.slice(12)}`;
+    }
+    if (type === "phone" && key.length >= 12) {
+      const ddi = key.slice(0, 2);
+      const ddd = key.slice(2, 4);
+      const number = key.slice(4);
+      if (number.length === 9) {
+        return `+${ddi} (${ddd}) ${number.slice(0, 5)}-${number.slice(5)}`;
+      }
+      return `+${ddi} (${ddd}) ${number.slice(0, 4)}-${number.slice(4)}`;
+    }
+    return key;
   };
 
   return (
@@ -204,20 +210,20 @@ const Cart = () => {
       <Dialog open={showCheckout} onOpenChange={(o) => !o && handleCloseCheckout()}>
         <DialogContent className="max-w-sm sm:max-w-md mx-4 max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="font-display text-lg sm:text-xl">Pagamento via PIX</DialogTitle>
+            <DialogTitle className="font-display text-lg sm:text-xl flex items-center gap-2">
+              <CreditCard size={20} />
+              Pagamento via PIX
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 sm:space-y-6">
-            <p className="font-body text-sm text-muted-foreground">
-              Copie o código PIX abaixo e pague no seu aplicativo bancário.
-            </p>
-            <p className="font-display text-lg sm:text-xl font-bold">
+            <p className="font-display text-lg sm:text-xl font-bold text-center">
               Total: R$ {totalPrice.toFixed(2).replace(".", ",")}
             </p>
             
             {settingsLoading ? (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-3"></div>
-                <p className="font-body text-sm text-muted-foreground">Carregando configurações...</p>
+                <p className="font-body text-sm text-muted-foreground">Carregando...</p>
               </div>
             ) : isGenerating ? (
               <div className="text-center py-8">
@@ -229,16 +235,32 @@ const Cart = () => {
                 <div className="flex items-start gap-2">
                   <AlertCircle size={18} className="mt-0.5 flex-shrink-0" />
                   <div>
-                    <p className="font-body text-sm font-medium">Erro</p>
-                    <p className="font-body text-xs mt-1">{pixError}</p>
-                    <p className="font-body text-[10px] mt-2 text-muted-foreground">{debugInfo}</p>
+                    <p className="font-body text-sm font-medium">{pixError}</p>
                   </div>
                 </div>
               </div>
-            ) : pixPayload ? (
+            ) : pixPayload && pixKeyInfo ? (
               <>
+                {/* Informações da chave PIX */}
+                <div className="bg-muted border border-border rounded-lg p-4">
+                  <p className="font-body text-xs uppercase tracking-wider text-muted-foreground mb-2">
+                    Chave PIX Configurada
+                  </p>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs font-medium rounded">
+                      {pixKeyInfo.typeLabel}
+                    </span>
+                  </div>
+                  <p className="font-body text-sm font-mono break-all">
+                    {formatKeyForDisplay(pixKeyInfo.value, pixKeyInfo.type)}
+                  </p>
+                </div>
+
+                {/* Código PIX */}
                 <div>
-                  <label className="font-body text-xs uppercase tracking-wider text-muted-foreground mb-1 block">Código PIX (copia e cola)</label>
+                  <label className="font-body text-xs uppercase tracking-wider text-muted-foreground mb-1 block">
+                    Código PIX (copia e cola)
+                  </label>
                   <textarea
                     readOnly
                     value={pixPayload}
@@ -253,12 +275,10 @@ const Cart = () => {
                     {copied ? "Copiado!" : "Copiar código PIX"}
                   </button>
                 </div>
-                <p className="font-body text-xs text-muted-foreground">
-                  Após o pagamento, envie o comprovante via WhatsApp para confirmação.
+
+                <p className="font-body text-xs text-muted-foreground text-center">
+                  Abra o app do seu banco, escolha "Pix Copia e Cola" e cole o código acima.
                 </p>
-                {debugInfo && (
-                  <p className="font-body text-[10px] text-muted-foreground">{debugInfo}</p>
-                )}
               </>
             ) : (
               <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-lg">
@@ -266,8 +286,7 @@ const Cart = () => {
                   <AlertCircle size={18} className="mt-0.5 flex-shrink-0" />
                   <div>
                     <p className="font-body text-sm font-medium">Configuração PIX pendente</p>
-                    <p className="font-body text-xs mt-1">Contate o administrador para configurar a chave PIX.</p>
-                    <p className="font-body text-[10px] mt-2 text-muted-foreground">{debugInfo}</p>
+                    <p className="font-body text-xs mt-1">Contate o administrador.</p>
                   </div>
                 </div>
               </div>
