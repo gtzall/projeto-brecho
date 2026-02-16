@@ -256,28 +256,8 @@ const Cart = () => {
                   </p>
                 </div>
 
-                {/* Código PIX */}
-                <div>
-                  <label className="font-body text-xs uppercase tracking-wider text-muted-foreground mb-1 block">
-                    Código PIX
-                  </label>
-                  <textarea
-                    readOnly
-                    value={pixPayload}
-                    rows={5}
-                    className="w-full px-3 py-2 bg-muted border border-border font-body text-xs rounded resize-none"
-                  />
-                  <button
-                    onClick={copyPixCode}
-                    className="w-full mt-3 bg-primary text-primary-foreground px-4 py-3 rounded hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
-                  >
-                    {copied ? <Check size={18} /> : <Copy size={18} />}
-                    {copied ? "Copiado!" : "Copiar código PIX"}
-                  </button>
-                </div>
-
                 <p className="font-body text-xs text-muted-foreground text-center">
-                  Abra o app do seu banco, escolha "Pix Copia e Cola" e cole o código acima.
+                  Use a chave acima para fazer o pagamento PIX no seu app bancário.
                 </p>
               </>
             ) : (
