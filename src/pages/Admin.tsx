@@ -176,6 +176,7 @@ const Admin = () => {
     onSuccess: () => {
       toast.success("Configurações PIX salvas!");
       queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["settings-pix"] });
     },
     onError: () => toast.error("Erro ao salvar"),
   });

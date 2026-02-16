@@ -4,17 +4,6 @@ import ProductCard from "./ProductCard";
 import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 
-const PLACEHOLDER_PRODUCTS = [
-  { id: "1", title: "Jaqueta Jeans Vintage", price: 89.9, original_price: 180, images: ["/placeholder.svg"], condition: "excelente", categories: { name: "Roupas" } },
-  { id: "2", title: "Relógio Seiko Automático", price: 320, original_price: 650, images: ["/placeholder.svg"], condition: "bom", categories: { name: "Acessórios" } },
-  { id: "3", title: "Bolsa de Couro Caramelo", price: 150, original_price: 400, images: ["/placeholder.svg"], condition: "excelente", categories: { name: "Acessórios" } },
-  { id: "4", title: "Coleção Clarice Lispector", price: 45, original_price: 90, images: ["/placeholder.svg"], condition: "bom", categories: { name: "Livros" } },
-  { id: "5", title: "Luminária Art Déco", price: 210, original_price: null, images: ["/placeholder.svg"], condition: "excelente", categories: { name: "Decoração" } },
-  { id: "6", title: "Vestido Midi Floral", price: 65, original_price: 120, images: ["/placeholder.svg"], condition: "bom", categories: { name: "Roupas" } },
-  { id: "7", title: "Anel Prata 925", price: 78, original_price: 150, images: ["/placeholder.svg"], condition: "novo", categories: { name: "Joias" } },
-  { id: "8", title: "Cadeira de Madeira Retrô", price: 280, original_price: 500, images: ["/placeholder.svg"], condition: "bom", categories: { name: "Móveis" } },
-];
-
 const FeaturedProducts = () => {
   const { data: products } = useQuery({
     queryKey: ["featured-products"],
@@ -30,7 +19,10 @@ const FeaturedProducts = () => {
     },
   });
 
-  const displayProducts = products && products.length > 0 ? products : PLACEHOLDER_PRODUCTS;
+  // Não mostra nada se não houver produtos cadastrados no admin
+  if (!products || products.length === 0) {
+    return null;
+  }
 
   return (
     <section className="py-20">
@@ -49,7 +41,7 @@ const FeaturedProducts = () => {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
-          {displayProducts.map((product: any, i: number) => (
+          {products.map((product: any, i: number) => (
             <ProductCard
               key={product.id}
               id={product.id}
