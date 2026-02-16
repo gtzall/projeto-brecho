@@ -2,12 +2,13 @@ import { useState, useEffect } from "react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useCart } from "@/hooks/useCart";
-import { Trash2, ShoppingBag, Copy, Check } from "lucide-react";
+import { Trash2, ShoppingBag, Copy, Check, AlertCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
-import { QrCodePix } from "qrcode-pix";
+import { generatePixPayload } from "@/utils/pix";
+import QRCode from "qrcode";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -23,6 +24,7 @@ const Cart = () => {
   const [qrBase64, setQrBase64] = useState("");
   const [copied, setCopied] = useState(false);
   const [pixError, setPixError] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const { data: settings } = useQuery({
     queryKey: ["settings-pix"],
@@ -38,39 +40,54 @@ const Cart = () => {
 
   useEffect(() => {
     if (!showCheckout || !settings?.pix_key || totalPrice <= 0) return;
-    const key = settings.pix_key.trim();
-    const name = (settings.pix_name || "Garimpário").trim();
-    const city = (settings.pix_city || "SAO PAULO").trim();
-    if (!key) return;
     
-    console.log("Gerando PIX com:", { key, name, city, value: totalPrice });
-    
-    try {
-      const qr = QrCodePix({
-        version: "01",
-        key,
-        name,
-        city,
-        transactionId: `GARIM-${Date.now()}`.slice(0, 25),
-        value: totalPrice,
-      });
-      const payload = qr.payload();
-      console.log("Payload PIX gerado:", payload);
-      setPixPayload(payload);
+    const generatePix = async () => {
+      setIsGenerating(true);
       setPixError(null);
-      qr.base64().then((base64: string) => {
-        console.log("QR Code gerado com sucesso");
-        setQrBase64(base64);
-      }).catch((err: any) => {
-        console.error("Erro ao gerar QR base64:", err);
-        setPixError("Erro ao gerar QR Code");
-      });
-    } catch (err: any) {
-      console.error("Erro na geração PIX:", err);
-      setPixPayload("");
-      setQrBase64("");
-      setPixError(err?.message || "Erro ao gerar código PIX. Verifique a configuração.");
-    }
+      
+      try {
+        const key = settings.pix_key.trim();
+        const name = (settings.pix_name || "Garimpário").trim();
+        const city = (settings.pix_city || "SAO PAULO").trim();
+        
+        if (!key) {
+          setPixError("Chave PIX não configurada");
+          return;
+        }
+
+        // Gerar payload PIX
+        const payload = generatePixPayload({
+          key,
+          name,
+          city,
+          transactionId: `GARIM${Date.now()}`.slice(0, 25),
+          value: totalPrice,
+        });
+        
+        setPixPayload(payload);
+        
+        // Gerar QR Code
+        const qrDataUrl = await QRCode.toDataURL(payload, {
+          width: 256,
+          margin: 2,
+          color: {
+            dark: "#000000",
+            light: "#FFFFFF",
+          },
+        });
+        
+        setQrBase64(qrDataUrl);
+      } catch (err: any) {
+        console.error("Erro ao gerar PIX:", err);
+        setPixError(err?.message || "Erro ao gerar código PIX");
+        setPixPayload("");
+        setQrBase64("");
+      } finally {
+        setIsGenerating(false);
+      }
+    };
+    
+    generatePix();
   }, [showCheckout, settings, totalPrice]);
 
   const copyPixCode = () => {
@@ -181,24 +198,35 @@ const Cart = () => {
             <p className="font-display text-lg sm:text-xl font-bold">
               Total: R$ {totalPrice.toFixed(2).replace(".", ",")}
             </p>
-            {settings?.pix_key ? (
-              <>
-                {pixError && (
-                  <div className="bg-destructive/10 border border-destructive text-destructive p-3 rounded">
-                    <p className="font-body text-sm">{pixError}</p>
+            
+            {isGenerating ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-3"></div>
+                <p className="font-body text-sm text-muted-foreground">Gerando código PIX...</p>
+              </div>
+            ) : pixError ? (
+              <div className="bg-destructive/10 border border-destructive text-destructive p-4 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <AlertCircle size={18} className="mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-body text-sm font-medium">Erro ao gerar PIX</p>
+                    <p className="font-body text-xs mt-1">{pixError}</p>
                   </div>
-                )}
+                </div>
+              </div>
+            ) : settings?.pix_key ? (
+              <>
                 {qrBase64 && (
                   <div className="flex justify-center p-3 sm:p-4 bg-muted rounded-lg">
                     <img src={qrBase64} alt="QR Code PIX" className="w-40 h-40 sm:w-48 sm:h-48" />
                   </div>
                 )}
                 <div>
-                  <label className="font-body text-xs uppercase tracking-wider text-muted-foreground mb-1 block">Código PIX</label>
+                  <label className="font-body text-xs uppercase tracking-wider text-muted-foreground mb-1 block">Código PIX (copia e cola)</label>
                   <div className="flex gap-2">
                     <input
                       readOnly
-                      value={pixPayload || "Gerando código..."}
+                      value={pixPayload || "Aguardando..."}
                       className="flex-1 px-3 py-2 bg-muted border border-border font-body text-xs sm:text-sm truncate rounded"
                     />
                     <button
@@ -211,13 +239,19 @@ const Cart = () => {
                   </div>
                 </div>
                 <p className="font-body text-xs text-muted-foreground">
-                  Após o pagamento, o pedido será processado.
+                  Após o pagamento, envie o comprovante via WhatsApp para confirmação.
                 </p>
               </>
             ) : (
-              <p className="font-body text-sm text-muted-foreground">
-                Configuração PIX pendente. Contate o administrador.
-              </p>
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <AlertCircle size={18} className="mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-body text-sm font-medium">Configuração PIX pendente</p>
+                    <p className="font-body text-xs mt-1">Contate o administrador para configurar a chave PIX.</p>
+                  </div>
+                </div>
+              </div>
             )}
             <button
               onClick={() => { handleCloseCheckout(); clearCart(); }}

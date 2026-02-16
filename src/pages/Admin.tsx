@@ -579,21 +579,55 @@ const Admin = () => {
         {activeTab === "settings" && (
           <div>
             <h2 className="font-display text-2xl font-bold mb-6">Configurações PIX</h2>
+            
+            {/* Visualização das configurações atuais */}
+            <div className="mb-8">
+              <h3 className="font-body text-xs uppercase tracking-wider text-muted-foreground mb-4">Configuração Ativa</h3>
+              {settings?.pix_key ? (
+                <div className="border border-border p-4 space-y-3 bg-card">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                        <span className="text-green-600 text-xs font-bold">PIX</span>
+                      </div>
+                      <div>
+                        <p className="font-body text-sm font-medium">{settings.pix_name || "Não configurado"}</p>
+                        <p className="font-body text-xs text-muted-foreground">{settings.pix_city || "SÃO PAULO"}</p>
+                      </div>
+                    </div>
+                    <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">Ativo</span>
+                  </div>
+                  <div className="pt-3 border-t border-border">
+                    <p className="font-body text-xs text-muted-foreground mb-1">Chave PIX</p>
+                    <p className="font-body text-sm font-mono bg-muted px-3 py-2 rounded">{settings.pix_key}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="border border-border p-6 text-center bg-muted/50">
+                  <p className="font-body text-sm text-muted-foreground">Nenhuma chave PIX configurada</p>
+                  <p className="font-body text-xs text-muted-foreground mt-1">Configure abaixo para receber pagamentos</p>
+                </div>
+              )}
+            </div>
+
+            {/* Formulário de edição */}
             <div className="max-w-md space-y-4 border border-border p-6">
+              <h3 className="font-display text-lg font-bold">{settings?.pix_key ? "Editar Configuração" : "Nova Configuração"}</h3>
               <div>
                 <label className="font-body text-xs uppercase tracking-wider text-muted-foreground mb-1 block">Chave PIX (e-mail, CPF, telefone ou chave aleatória)</label>
                 <input value={pixSettings.pix_key} onChange={(e) => setPixSettings((s) => ({ ...s, pix_key: e.target.value }))} className="w-full px-3 py-2 bg-transparent border border-border font-body text-sm focus:outline-none focus:border-primary" placeholder="seu@email.com ou 123.456.789-00" />
+                <p className="font-body text-xs text-muted-foreground mt-1">CPF: apenas números | Email: formato válido | Telefone: com DDD</p>
               </div>
               <div>
                 <label className="font-body text-xs uppercase tracking-wider text-muted-foreground mb-1 block">Nome do recebedor</label>
-                <input value={pixSettings.pix_name} onChange={(e) => setPixSettings((s) => ({ ...s, pix_name: e.target.value }))} className="w-full px-3 py-2 bg-transparent border border-border font-body text-sm focus:outline-none focus:border-primary" />
+                <input value={pixSettings.pix_name} onChange={(e) => setPixSettings((s) => ({ ...s, pix_name: e.target.value }))} className="w-full px-3 py-2 bg-transparent border border-border font-body text-sm focus:outline-none focus:border-primary" placeholder="Seu Nome" />
               </div>
               <div>
                 <label className="font-body text-xs uppercase tracking-wider text-muted-foreground mb-1 block">Cidade</label>
                 <input value={pixSettings.pix_city} onChange={(e) => setPixSettings((s) => ({ ...s, pix_city: e.target.value }))} className="w-full px-3 py-2 bg-transparent border border-border font-body text-sm focus:outline-none focus:border-primary" placeholder="SAO PAULO" />
               </div>
               <button onClick={() => savePixSettings.mutate()} disabled={savePixSettings.isPending} className="bg-primary text-primary-foreground px-6 py-2 font-body text-xs uppercase tracking-widest hover:bg-terracotta-dark transition-colors disabled:opacity-50">
-                {savePixSettings.isPending ? "Salvando..." : "Salvar configurações"}
+                {savePixSettings.isPending ? "Salvando..." : (settings?.pix_key ? "Atualizar" : "Salvar")}
               </button>
             </div>
           </div>
