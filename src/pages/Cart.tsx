@@ -259,7 +259,7 @@ const Cart = () => {
                 {/* Código PIX */}
                 <div>
                   <label className="font-body text-xs uppercase tracking-wider text-muted-foreground mb-1 block">
-                    Código PIX (copia e cola)
+                    Código PIX
                   </label>
                   <textarea
                     readOnly
