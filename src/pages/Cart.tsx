@@ -8,7 +8,6 @@ import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { generatePixPayload } from "@/utils/pix";
-import QRCode from "qrcode";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -21,16 +20,21 @@ const Cart = () => {
   const { items, removeItem, totalPrice, clearCart } = useCart();
   const [showCheckout, setShowCheckout] = useState(false);
   const [pixPayload, setPixPayload] = useState("");
-  const [qrBase64, setQrBase64] = useState("");
   const [copied, setCopied] = useState(false);
   const [pixError, setPixError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<string>("");
 
-  const { data: settings } = useQuery({
+  const { data: settings, isLoading: settingsLoading } = useQuery({
     queryKey: ["settings-pix"],
     queryFn: async () => {
+      console.log("Buscando settings do Supabase...");
       const { data, error } = await supabase.from("settings").select("key, value");
-      if (error) throw error;
+      if (error) {
+        console.error("Erro ao buscar settings:", error);
+        throw error;
+      }
+      console.log("Settings recebidas:", data);
       const map: Record<string, string> = {};
       (data || []).forEach((r: { key: string; value: string }) => { map[r.key] = r.value; });
       return map;
@@ -39,9 +43,27 @@ const Cart = () => {
   });
 
   useEffect(() => {
-    if (!showCheckout || !settings?.pix_key || totalPrice <= 0) return;
+    if (!showCheckout) return;
     
-    const generatePix = async () => {
+    console.log("Effect executado:", { showCheckout, settings, totalPrice });
+    
+    if (!settings) {
+      setDebugInfo("Carregando configurações...");
+      return;
+    }
+    
+    if (!settings.pix_key) {
+      setDebugInfo("Chave PIX não encontrada nas configurações. Settings: " + JSON.stringify(settings));
+      setPixError("Chave PIX não configurada no admin");
+      return;
+    }
+    
+    if (totalPrice <= 0) {
+      setPixError("Valor inválido");
+      return;
+    }
+    
+    const generatePix = () => {
       setIsGenerating(true);
       setPixError(null);
       
@@ -50,8 +72,11 @@ const Cart = () => {
         const name = (settings.pix_name || "Garimpário").trim();
         const city = (settings.pix_city || "SAO PAULO").trim();
         
+        setDebugInfo(`Gerando PIX com chave: ${key.substring(0, 10)}...`);
+        
         if (!key) {
-          setPixError("Chave PIX não configurada");
+          setPixError("Chave PIX vazia");
+          setIsGenerating(false);
           return;
         }
 
@@ -60,28 +85,18 @@ const Cart = () => {
           key,
           name,
           city,
-          transactionId: `GARIM${Date.now()}`.slice(0, 25),
+          transactionId: `GARIM${Date.now()}`,
           value: totalPrice,
         });
         
+        console.log("Payload gerado:", payload);
         setPixPayload(payload);
-        
-        // Gerar QR Code
-        const qrDataUrl = await QRCode.toDataURL(payload, {
-          width: 256,
-          margin: 2,
-          color: {
-            dark: "#000000",
-            light: "#FFFFFF",
-          },
-        });
-        
-        setQrBase64(qrDataUrl);
+        setDebugInfo(`Chave usada: ${key.substring(0, 15)}...`);
       } catch (err: any) {
         console.error("Erro ao gerar PIX:", err);
         setPixError(err?.message || "Erro ao gerar código PIX");
         setPixPayload("");
-        setQrBase64("");
+        setDebugInfo(`Erro: ${err?.message}`);
       } finally {
         setIsGenerating(false);
       }
@@ -101,8 +116,8 @@ const Cart = () => {
   const handleCloseCheckout = () => {
     setShowCheckout(false);
     setPixPayload("");
-    setQrBase64("");
     setPixError(null);
+    setDebugInfo("");
   };
 
   return (
@@ -193,13 +208,18 @@ const Cart = () => {
           </DialogHeader>
           <div className="space-y-4 sm:space-y-6">
             <p className="font-body text-sm text-muted-foreground">
-              Escaneie o QR Code ou copie o código PIX para pagar.
+              Copie o código PIX abaixo e pague no seu aplicativo bancário.
             </p>
             <p className="font-display text-lg sm:text-xl font-bold">
               Total: R$ {totalPrice.toFixed(2).replace(".", ",")}
             </p>
             
-            {isGenerating ? (
+            {settingsLoading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-3"></div>
+                <p className="font-body text-sm text-muted-foreground">Carregando configurações...</p>
+              </div>
+            ) : isGenerating ? (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-3"></div>
                 <p className="font-body text-sm text-muted-foreground">Gerando código PIX...</p>
@@ -209,38 +229,36 @@ const Cart = () => {
                 <div className="flex items-start gap-2">
                   <AlertCircle size={18} className="mt-0.5 flex-shrink-0" />
                   <div>
-                    <p className="font-body text-sm font-medium">Erro ao gerar PIX</p>
+                    <p className="font-body text-sm font-medium">Erro</p>
                     <p className="font-body text-xs mt-1">{pixError}</p>
+                    <p className="font-body text-[10px] mt-2 text-muted-foreground">{debugInfo}</p>
                   </div>
                 </div>
               </div>
-            ) : settings?.pix_key ? (
+            ) : pixPayload ? (
               <>
-                {qrBase64 && (
-                  <div className="flex justify-center p-3 sm:p-4 bg-muted rounded-lg">
-                    <img src={qrBase64} alt="QR Code PIX" className="w-40 h-40 sm:w-48 sm:h-48" />
-                  </div>
-                )}
                 <div>
                   <label className="font-body text-xs uppercase tracking-wider text-muted-foreground mb-1 block">Código PIX (copia e cola)</label>
-                  <div className="flex gap-2">
-                    <input
-                      readOnly
-                      value={pixPayload || "Aguardando..."}
-                      className="flex-1 px-3 py-2 bg-muted border border-border font-body text-xs sm:text-sm truncate rounded"
-                    />
-                    <button
-                      onClick={copyPixCode}
-                      disabled={!pixPayload}
-                      className="bg-primary text-primary-foreground px-3 py-2 rounded hover:bg-primary/90 transition-colors flex-shrink-0 disabled:opacity-50"
-                    >
-                      {copied ? <Check size={18} /> : <Copy size={18} />}
-                    </button>
-                  </div>
+                  <textarea
+                    readOnly
+                    value={pixPayload}
+                    rows={5}
+                    className="w-full px-3 py-2 bg-muted border border-border font-body text-xs rounded resize-none"
+                  />
+                  <button
+                    onClick={copyPixCode}
+                    className="w-full mt-3 bg-primary text-primary-foreground px-4 py-3 rounded hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+                  >
+                    {copied ? <Check size={18} /> : <Copy size={18} />}
+                    {copied ? "Copiado!" : "Copiar código PIX"}
+                  </button>
                 </div>
                 <p className="font-body text-xs text-muted-foreground">
                   Após o pagamento, envie o comprovante via WhatsApp para confirmação.
                 </p>
+                {debugInfo && (
+                  <p className="font-body text-[10px] text-muted-foreground">{debugInfo}</p>
+                )}
               </>
             ) : (
               <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-lg">
@@ -249,6 +267,7 @@ const Cart = () => {
                   <div>
                     <p className="font-body text-sm font-medium">Configuração PIX pendente</p>
                     <p className="font-body text-xs mt-1">Contate o administrador para configurar a chave PIX.</p>
+                    <p className="font-body text-[10px] mt-2 text-muted-foreground">{debugInfo}</p>
                   </div>
                 </div>
               </div>
