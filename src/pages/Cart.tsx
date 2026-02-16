@@ -22,6 +22,7 @@ const Cart = () => {
   const [pixPayload, setPixPayload] = useState("");
   const [qrBase64, setQrBase64] = useState("");
   const [copied, setCopied] = useState(false);
+  const [pixError, setPixError] = useState<string | null>(null);
 
   const { data: settings } = useQuery({
     queryKey: ["settings-pix"],
@@ -41,6 +42,9 @@ const Cart = () => {
     const name = (settings.pix_name || "Garimpário").trim();
     const city = (settings.pix_city || "SAO PAULO").trim();
     if (!key) return;
+    
+    console.log("Gerando PIX com:", { key, name, city, value: totalPrice });
+    
     try {
       const qr = QrCodePix({
         version: "01",
@@ -50,11 +54,22 @@ const Cart = () => {
         transactionId: `GARIM-${Date.now()}`.slice(0, 25),
         value: totalPrice,
       });
-      setPixPayload(qr.payload());
-      qr.base64().then(setQrBase64);
-    } catch {
+      const payload = qr.payload();
+      console.log("Payload PIX gerado:", payload);
+      setPixPayload(payload);
+      setPixError(null);
+      qr.base64().then((base64: string) => {
+        console.log("QR Code gerado com sucesso");
+        setQrBase64(base64);
+      }).catch((err: any) => {
+        console.error("Erro ao gerar QR base64:", err);
+        setPixError("Erro ao gerar QR Code");
+      });
+    } catch (err: any) {
+      console.error("Erro na geração PIX:", err);
       setPixPayload("");
       setQrBase64("");
+      setPixError(err?.message || "Erro ao gerar código PIX. Verifique a configuração.");
     }
   }, [showCheckout, settings, totalPrice]);
 
@@ -70,6 +85,7 @@ const Cart = () => {
     setShowCheckout(false);
     setPixPayload("");
     setQrBase64("");
+    setPixError(null);
   };
 
   return (
@@ -167,6 +183,11 @@ const Cart = () => {
             </p>
             {settings?.pix_key ? (
               <>
+                {pixError && (
+                  <div className="bg-destructive/10 border border-destructive text-destructive p-3 rounded">
+                    <p className="font-body text-sm">{pixError}</p>
+                  </div>
+                )}
                 {qrBase64 && (
                   <div className="flex justify-center p-3 sm:p-4 bg-muted rounded-lg">
                     <img src={qrBase64} alt="QR Code PIX" className="w-40 h-40 sm:w-48 sm:h-48" />
@@ -177,12 +198,13 @@ const Cart = () => {
                   <div className="flex gap-2">
                     <input
                       readOnly
-                      value={pixPayload}
+                      value={pixPayload || "Gerando código..."}
                       className="flex-1 px-3 py-2 bg-muted border border-border font-body text-xs sm:text-sm truncate rounded"
                     />
                     <button
                       onClick={copyPixCode}
-                      className="bg-primary text-primary-foreground px-3 py-2 rounded hover:bg-primary/90 transition-colors flex-shrink-0"
+                      disabled={!pixPayload}
+                      className="bg-primary text-primary-foreground px-3 py-2 rounded hover:bg-primary/90 transition-colors flex-shrink-0 disabled:opacity-50"
                     >
                       {copied ? <Check size={18} /> : <Copy size={18} />}
                     </button>
